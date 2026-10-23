@@ -1,0 +1,10 @@
+**/.git
+work/
+results/
+eval/
+setup/
+submissions/archgen/
+submissions/abuplace/
+**/__pycache__/
+**/*.so
+external/Xplace/build*/

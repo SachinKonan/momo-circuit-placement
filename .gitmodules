@@ -1,0 +1,12 @@
+[submodule "submissions/archgen"]
+	path = submissions/archgen
+	url = https://github.com/archgen-ai/Macro-Placement-challenge-2026.git
+[submodule "submissions/abuplace"]
+	path = submissions/abuplace
+	url = https://github.com/rishivg/AbuPlace.git
+[submodule "external/macro-place-challenge-2026"]
+	path = external/macro-place-challenge-2026
+	url = https://github.com/partcleda/macro-place-challenge-2026.git
+[submodule "external/Xplace"]
+	path = external/Xplace
+	url = https://github.com/cuhk-eda/Xplace.git

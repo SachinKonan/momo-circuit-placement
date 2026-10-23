@@ -1,0 +1,4 @@
+work/
+__pycache__/
+*.so
+submissions/momo/momo_proxy/build-manifest.json
