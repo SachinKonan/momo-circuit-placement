@@ -33,11 +33,11 @@ NG45 = ['ariane133', 'ariane136', 'mempool_tile', 'nvdla']
 # ~1 min Xplace step; ArchGen and AbuPlace use theirs throughout).
 METHODS = {
     'momo300': dict(python=CUDA_PY, repo=OFFICIAL, placer=MOMO_PLACER,
-                    env=dict(MOMO_XPLACE_ROOT=str(REPO / 'external/Xplace'), MOMO_SEARCH_SECONDS='300',
+                    env=dict(MOMO_XPLACE_ROOT=str(WORK / 'Xplace-momo'), MOMO_SEARCH_SECONDS='300',
                              MOMO_TOTAL_SECONDS=str(BUDGET)),
                     est=900, timeout=3330, repeats=3, gpu_share=0.05),
     'momofill': dict(python=CUDA_PY, repo=OFFICIAL, placer=MOMO_PLACER,
-                     env=dict(MOMO_XPLACE_ROOT=str(REPO / 'external/Xplace'), MOMO_SEARCH_SECONDS='fill',
+                     env=dict(MOMO_XPLACE_ROOT=str(WORK / 'Xplace-momo'), MOMO_SEARCH_SECONDS='fill',
                               MOMO_TOTAL_SECONDS=str(BUDGET)),
                      est=BUDGET + 200, timeout=3330, repeats=2, gpu_share=0.05),
     'archgen': dict(python=CUDA_PY, repo=str(REPO / 'submissions/archgen'), placer='submissions/final_placer.py',

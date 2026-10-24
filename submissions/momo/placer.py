@@ -201,7 +201,10 @@ def xplace_gp(p, name, config, work, timeout_s):
            '--num_threads', str(os.environ.get('OMP_NUM_THREADS', os.cpu_count() or 8)), '--result_dir', str(work / config), '--exp_id', 'run',
            '--gpu', '0'] + [x for k, v in cfg.items() for x in (f'--{k}', str(v))]
     with open(work / f'{config}.log', 'w') as log:
-        subprocess.run(cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout_s)
+        rc = subprocess.run(cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=timeout_s).returncode
+    if rc:
+        tail = (work / f'{config}.log').read_text(errors='replace').strip().splitlines()[-3:]
+        raise RuntimeError(f'Xplace exited with {rc}: ' + ' | '.join(tail))
     pl = sorted((work / config).rglob(f'*{name}_gp.pl'))[-1]
     n = len(p['sizes'])
     index = {nm: i for i, nm in enumerate(names)}
@@ -231,6 +234,17 @@ def xplace_gp(p, name, config, work, timeout_s):
 
 
 # ---------- placer ----------
+
+def hard_overlap(pos, p):
+    """True if any two hard macros overlap with positive area, at pos's own precision (zero tolerance)."""
+    n = int(p['num_hard'])
+    c = np.asarray(pos)[:n]
+    h = (np.asarray(p['sizes'])[:n] / 2).astype(c.dtype)
+    hit = ((np.abs(c[:, None, 0] - c[None, :, 0]) < h[:, None, 0] + h[None, :, 0])
+           & (np.abs(c[:, None, 1] - c[None, :, 1]) < h[:, None, 1] + h[None, :, 1]))
+    np.fill_diagonal(hit, False)
+    return bool(hit.any())
+
 
 class MomoPlacer:
     def place(self, benchmark):
@@ -289,6 +303,18 @@ class MomoPlacer:
         pos = np.array(result['positions'], dtype=np.float64)
         fixed = np.asarray(p['fixed'], dtype=bool)
         pos[fixed] = benchmark.macro_positions.numpy()[fixed]
+        # The search clips to the canvas after its last legality check; never return an overlap.
+        if hard_overlap(pos, p):
+            pos = np.array(layouts[0][2], dtype=np.float64)
+            pos[fixed] = benchmark.macro_positions.numpy()[fixed]
+            log['final_guard'] = 'search result overlapped; returned the legal start'
+        out = torch.from_numpy(pos)
+        # validate_placement compares fixed macros with torch.allclose, which needs matching dtypes.
+        if fixed.any() and not hard_overlap(pos.astype(np.float32), p):
+            out = out.to(benchmark.macro_positions.dtype)
         log['total_seconds'] = time.monotonic() - t0
         write_log()
-        return torch.from_numpy(pos)
+        if log['fallback'] or 'final_guard' in log:
+            print(f"momo: {benchmark.name}: start={log['best_start']} configs={log['configs']} "
+                  f"{log.get('final_guard', '')}", file=sys.stderr)
+        return out

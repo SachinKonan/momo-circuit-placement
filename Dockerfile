@@ -14,9 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential bison flex libboost-all-dev libcairo2-dev libfl-dev ninja-build pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Versions from the environment we evaluated in (setup/cuda-env-requirements.txt).
+# Xplace's Python dependencies, at the versions of the environment we evaluated in
+# (setup/cuda-env-requirements.txt); torchvision comes with the base image.
 RUN pip install --no-cache-dir numpy==2.2.6 scipy==1.17.1 tqdm==4.70.1 absl-py==2.5.1 matplotlib==3.11.2 \
-        pandas==3.0.6 numba==0.68.0 cairocffi==1.7.1 cmake==3.31.6 ninja==1.13.2 pybind11==3.1.0 protobuf==7.36.2
+        pandas==3.0.6 numba==0.68.0 cairocffi==1.7.1 cmake==3.31.6 ninja==1.13.2 pybind11==3.1.0 protobuf==7.36.2 \
+        opencv-python-headless==5.0.0.93 seaborn==0.13.2 igraph==1.0.0 pulp==3.3.2 \
+    && python -c "import cv2, seaborn, igraph, pulp, torchvision, cairocffi, numba, pandas"
 
 # Challenge evaluator (996193c) with the benchmark data the evaluation loads.
 WORKDIR /challenge
@@ -44,7 +47,11 @@ COPY submissions/momo/ /challenge/submissions/momo/
 RUN python /challenge/submissions/momo/momo_proxy/build.py \
     && python -c "import sys; sys.path.insert(0, '/challenge/submissions/momo'); import momo_proxy"
 
-ENV MOMO_XPLACE_ROOT=/opt/Xplace MOMO_SEARCH_SECONDS=fill MOMO_TOTAL_SECONDS=3000
+# Files are copied with the build host's permissions; make them readable for any run-time user.
+RUN chmod -R a+rX /opt/Xplace /challenge
+
+# Thread count for Xplace (the placer otherwise uses os.cpu_count(), the host's cores): the judges' 16.
+ENV MOMO_XPLACE_ROOT=/opt/Xplace MOMO_SEARCH_SECONDS=fill MOMO_TOTAL_SECONDS=3000 OMP_NUM_THREADS=16
 
 ENTRYPOINT ["python", "-m", "macro_place.evaluate"]
 CMD ["submissions/momo/placer.py", "--all"]

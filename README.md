@@ -82,9 +82,15 @@ official scorer. We wrote it only from the challenge's Python evaluator, not fro
 matches the official scorer to about 1e-6.
 
 How it differs from the winners: the search accepts some uphill moves (both winners accept only
-improving moves) and spends the middle of its run on congestion. There is no design-specific tuning,
-no fallback path and no GPU work beyond the one-minute Xplace step. We have not ablated which of these
-choices explains the gain.
+improving moves) and spends the middle of its run on congestion. There is no design-specific tuning and
+no GPU work beyond the one-minute Xplace step. We have not ablated which of these choices explains the
+gain.
+
+Fallbacks: if an Xplace setting fails or its legalization runs out of time, the placer uses the
+remaining settings (this happened on ibm10 and ibm17, where one or two of the three settings timed out
+in legalization); if all fail, it legalizes the benchmark's given positions. As a last check, if the
+search's result had a hard-macro overlap, it would return the legal start instead (none of our runs
+did). Any of these is reported on stderr.
 
 ## How the program was found
 
@@ -135,10 +141,11 @@ All methods ran under one harness ([`eval/`](eval)) on Princeton's Della cluster
   - MOMO's 3,000 s total includes reading the netlist, Xplace and legalization.
 - **Hardware.**
   - Jobs ran on NVIDIA H100 nodes, 1 hour each, drawing tasks from a shared file queue.
-  - Each task was pinned to its own 12-core slice with a 64 GB memory limit, a clean environment and
-    a private home and temp directory.
-  - GPU-bound placers (ArchGen, AbuPlace) had the GPU to themselves; MOMO, which is CPU-bound, could
-    share one.
+  - Each task was pinned to its own 12-core slice, with a clean environment, a private home and temp
+    directory, and a 64 GB memory watchdog (sampled once a second).
+  - Each job had one GPU and three slices. Two GPU-bound baselines (ArchGen, AbuPlace) never ran on the
+    same GPU, but a baseline could share its GPU with up to two MOMO tasks, whose GPU use is the
+    roughly one-minute Xplace step.
   - The judges used a 16-core AMD EPYC 9655P with 100 GB and an RTX 6000 Ada. Our 12-core slices
     likely disadvantage the CPU-bound MOMO, and the H100 likely favours the GPU-bound baselines.
 - **Validity.** Each result records two checks:
@@ -158,6 +165,12 @@ sbatch --export=ALL,REPO=$PWD --array=0-79%20 eval/pli_queue.sbatch   # Slurm se
 work/env/cuda/bin/python eval/aggregate.py     # coverage, validity, log checks, per-design comparison
 ```
 
+These commands assume the default work directory `./work`; if you set `FAIR_EVAL_WORK`, use an
+absolute path and replace `work/` with it.
+
+```sh
+```
+
 ### Run MOMO the way the judges run a submission
 
 The [`Dockerfile`](Dockerfile) packages MOMO for the challenge's Docker evaluation. It uses the judges'
@@ -173,13 +186,15 @@ docker run --rm --network none --gpus all momo-placer submissions/momo/placer.py
 ```
 
 The image runs MOMO with a 3,000 s budget per design (`MOMO_SEARCH_SECONDS=fill`,
-`MOMO_TOTAL_SECONDS=3000`). Set `-e MOMO_SEARCH_SECONDS=300` for the 300 s search.
+`MOMO_TOTAL_SECONDS=3000`) and 16 Xplace threads (`OMP_NUM_THREADS=16`, the judges' core count). Set
+`-e MOMO_SEARCH_SECONDS=300` for the 300 s search. In our runs the 3,000 s setting took at most
+2,966 s per design.
 
 Without Docker, after `setup/setup.sh`:
 
 ```sh
 cd external/macro-place-challenge-2026
-MOMO_XPLACE_ROOT=../Xplace MOMO_SEARCH_SECONDS=fill MOMO_TOTAL_SECONDS=3000 \
+MOMO_XPLACE_ROOT=../../work/Xplace-momo MOMO_SEARCH_SECONDS=fill MOMO_TOTAL_SECONDS=3000 \
   ../../work/env/cuda/bin/python -m macro_place.evaluate ../../submissions/momo/placer.py --all
 ```
 

@@ -44,13 +44,18 @@ def main():
     a = ap.parse_args()
     recorded = {(r['method'], r['repeat'], r['design']): float(r['proxy'])
                 for r in csv.DictReader(open(REPO / 'results/all_runs.csv'))}
-    files = sorted((REPO / 'results/placements').glob('*/*/*.npy'))
-    if a.methods:
-        files = [f for f in files if f.parts[-3] in a.methods.split(',')]
-    if a.designs:
-        files = [f for f in files if f.stem in a.designs.split(',')]
+    # Check every recorded run in the selection; a missing placement file counts as a failure.
+    expected = [k for k in recorded if (not a.methods or k[0] in a.methods.split(','))
+                and (not a.designs or k[2] in a.designs.split(','))]
+    if not expected:
+        sys.exit(f'no recorded runs match --methods {a.methods} --designs {a.designs}')
+    files = [REPO / 'results/placements' / m / r / f'{d}.npy' for m, r, d in expected]
+    missing = [f for f in files if not f.exists()]
+    for f in missing:
+        print(f'MISSING {f.relative_to(REPO)}')
+    files = [f for f in files if f.exists()]
     files.sort(key=lambda f: f.stem)   # one design loaded at a time
-    loaded, scores, bad = (None, None), collections.defaultdict(lambda: collections.defaultdict(list)), 0
+    loaded, scores, bad = (None, None), collections.defaultdict(lambda: collections.defaultdict(list)), len(missing)
     for f in files:
         method, repeat, design = f.parts[-3], f.parts[-2], f.stem
         if loaded[0] != design:
@@ -63,7 +68,10 @@ def main():
         m = compute_proxy_cost(t, b, plc)
         valid = (pos.shape == tuple(b.macro_positions.shape) and bool(np.isfinite(pos).all()) and fixed_ok
                  and int(m['overlap_count']) == 0)
-        strict, _ = validate_placement(t, b)
+        try:   # validate_placement's fixed-macro allclose needs matching dtypes
+            strict, _ = validate_placement(t, b)
+        except RuntimeError:
+            strict = None
         proxy = float(m['proxy_cost'])
         same = abs(proxy - recorded[(method, repeat, design)]) < 1e-6
         bad += (not valid) or (not same)
@@ -74,9 +82,11 @@ def main():
     for method, per in scores.items():
         ibm = [st.mean(v) for d, v in per.items() if d not in NG45]
         ng = [st.mean(v) for d, v in per.items() if d in NG45]
-        print(f'{method:9s} IBM mean {st.mean(ibm):.4f} over {len(ibm)} designs'
-              + (f'; NG45 mean {st.mean(ng):.4f} over {len(ng)}' if ng else ''))
-    print('all valid and matching the record' if not bad else f'{bad} placements invalid or not matching')
+        parts = [f'{name} mean {st.mean(v):.4f} over {len(v)} designs' for name, v in (('IBM', ibm), ('NG45', ng)) if v]
+        print(f'{method:9s} ' + '; '.join(parts))
+    if bad:
+        sys.exit(f'{bad} of {len(expected)} placements missing, invalid or not matching the record')
+    print(f'all {len(expected)} placements valid and matching the record')
 
 
 if __name__ == '__main__':
